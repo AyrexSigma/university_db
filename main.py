@@ -1,181 +1,181 @@
 import sqlite3
 import sys
 
-class StudentskaBasa:
+class StudentDB:
     def __init__(self, shlah_do_basi="university.db"):
-        self.zednanya = None
+        self.connection = None
         self.cursor = None
-        self.pidkluchiti_bazu(shlah_do_basi)
-        self.stvoriti_tablici()
+        self.connect_base(shlah_do_basi)
+        self.create_tables()
 
-    def pidkluchiti_bazu(self, file):
+    def connect_base(self, file):
         try:
-            self.zednanya = sqlite3.connect(file)
-            self.cursor = self.zednanya.cursor()
-            print(">> db pidkluchina")
-        except Exception as pomilka:
-            print(f"Pomilka pidkluchina: {pomilka}")
+            self.connection = sqlite3.connect(file)
+            self.cursor = self.connection.cursor()
+            print(">> db connection")
+        except Exception as error:
+            print(f"Error connection: {error}")
             sys.exit(1)
 
-    def stvoriti_tablici(self):
-        zapit_studenti = """
+    def create_tables(self):
+        student_query = """
         CREATE TABLE IF NOT EXISTS studenti (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            im_ya TEXT NOT NULL,
-            vik INTEGER CHECK (vik >= 16 AND vik <= 80),
-            specialnist TEXT DEFAULT 'NE VKAZANO'
+            name TEXT NOT NULL,
+            age INTEGER CHECK (age >= 16 AND age <= 80),
+            majors TEXT DEFAULT 'NE VKAZANO'
         );"""
 
-        zapit_cursi = """
+        course_query = """
         CREATE TABLE IF NOT EXISTS cursi (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nazva TEXT UNIQUE NOT NULL,
-            vikladach TEXT NOT NULL,
-            kilkisty_misc INTEGER DEFAULT 30
+            name TEXT UNIQUE NOT NULL,
+            teacher TEXT NOT NULL,
+            number_of_seats INTEGER DEFAULT 30
         );"""
 
-        zapit_zapisi = """
+        report_request = """
         CREATE TABLE IF NOT EXISTS zapisi (
-            id_studenta INTEGER,
-            id_cursa INTEGER,
-            data_zapisu DATE DEFAULT CURRENT_DATE,
-            PRIMARY KEY (id_studenta, id_cursu),
-            FOREIGN KEY (id_studenta) REFERENCES studenti(id),
-            FOREIGN KEY (id_cursu) REFERENCES cursi(id)
+            id_student INTEGER,
+            id_course INTEGER,
+            entry_data DATE DEFAULT CURRENT_DATE,
+            PRIMARY KEY (id_student, id_course),
+            FOREIGN KEY (id_student) REFERENCES students(id),
+            FOREIGN KEY (id_course) REFERENCES courses(id)
         );"""
 
         try:
-            self.cursor.execute(zapit_studenti)
-            self.cursor.execute(zapit_cursi)
-            self.cursor.execute(zapit_zapisi)
-            self.zednanya.commit()
-        except Exception as pomilka:
-            print(f"Pomilka stvorenya tablic: {pomilka}")
+            self.cursor.execute(student_query)
+            self.cursor.execute(course_query)
+            self.cursor.execute(report_request)
+            self.connection.commit()
+        except Exception as error:
+            print(f"Error with creating tables: {error}")
 
-    def dodati_studenta(self, im_ya, vik, specialnist=None):
-        parametri = (im_ya, vik)
-        zapit = "INSERT INTO studenti(im_ya, vik)"
+    def add_student(self, name, age, major=None):
+        settings = (name, age)
+        query = "INSERT INTO studenti(name, age)"
 
-        if specialnist:
-            zapit += ", specialnist) VALUES(?, ?, ?"
-            parametri += (specialnist,)
+        if major:
+            query += ", major) VALUES(?, ?, ?"
+            settings += (major,)
         else:
-            zapit += ") VALEUS(?, ?)"
+            query += ") VALEUS(?, ?)"
 
         try:
-            self.cursor.execute(zapit, parametri)
-            self.zednanya.commit()
+            self.cursor.execute(query, settings)
+            self.connection.commit()
             return self.cursor.lastrowid
-        except Exception as pomilka:
-            print(f"Pomilka dodavanya: {pomilka}")
+        except Exception as error:
+            print(f"Error with adding: {error}")
             return None
 
-    def zapisatsya_na_curs(self, id_studenta, id_cursu):
-        self.cursor.execute("SELECT 1 FROM studenti WHERE id = ?", (id_studenta,))
+    def enroll_in_a_course(self, id_student, id_course):
+        self.cursor.execute("SELECT 1 FROM student WHERE id = ?", (id_student,))
         if not self.cursor.fetchone():
-            print(">> Pomilka: Studenta z takim ID ne isnue")
+            print(">> Error: Student with this ID does not exist")
             return False
 
-        self.cursor.execute("SELECT 1 FROM cursi WHERE id = ?", (id_cursu,))
+        self.cursor.execute("SELECT 1 FROM course WHERE id = ?", (id_course,))
         if not self.cursor.fetchone():
-            print(">> Pomilka: cursu z takim ID ne isnue")
+            print(">> Error: course with this ID does not exist")
             return False
 
         self.cursor.execute("""
-            SELECT k.kilkist_misc, COUNT(z.id_studenta)
-            FROM cursi k
-            LEFT JOIN zapisi з ON к.id = з.id_cursu
+            SELECT k.number_of_seats, COUNT(z.id_students)
+            FROM courses k
+            LEFT JOIN entry з ON k.id = з.id_course
             WHERE k.id = ?
             GROUP BY k.id
-        """, (id_cursu,))
-        rezultat = self.cursor.fetchone()
-        if rezultat and rezultat[1] >= rezultat[0]:
-            print(">> Pomilka: Na cursi vzhe nemae vilnih misc")
+        """, (id_course,))
+        result = self.cursor.fetchone()
+        if result and result[1] >= result[0]:
+            print(">> Error: This course dont have free seats")
             return False
 
         try:
             self.cursor.execute("""
-                INSERT INTO zapisi(studenta, cursu)
+                INSERT INTO zapisi(students, courses)
                 VALUES(?, ?)
-            """, (id_studenta, id_cursu))
-            self.zednanya.commit()
-            print(">> Studenta uspishno zapisano на curs")
+            """, (id_student, id_course))
+            self.connection.commit()
+            print(">> Student successfully entries the course")
             return True
-        except Exception as pomilka:
-            print(f">> Pomilka zapisu: {pomilka}")
+        except Exception as error:
+            print(f">> Error with entry: {error}")
             return False
 
-    def pokazati_cursi_studenta(self, id_studenta):
-        zapit = """
+    def show_students_courses(self, id_student):
+        query = """
         SELECT k.nazva, k.vikladach
         FROM cursi k
         JOIN zapisi z ON k.id = z.id_cursu
         WHERE z.id_studenta = ?
         """
-        self.cursor.execute(zapit, (id_studenta,))
+        self.cursor.execute(query, (id_student,))
         return self.cursor.fetchall()
 
-def golovne_menu():
-    print("\n=== Universitetska sistema ===")
-    print("1. Dodati novogo studenta")
-    print("2. Zapisati studenta na curs")
-    print("3. Pereglanuti cursi studenta")
-    print("4. Viyti")
-    return input("> Oberit diyu: ")
+def main_menu():
+    print("\n=== University system ===")
+    print("1. Add new student")
+    print("2. Entry student to course")
+    print("3. Check students courses")
+    print("4. Exit")
+    return input("> Choose action: ")
 
-def osnovny_cicl():
-    baza = StudentskaBasa()
+def main_cycle():
+    base = StudentDB()
 
     while True:
-        vibir = golovne_menu()
+        choice = main_menu()
 
-        if vibir == '1':
-            im_ya = input("Im`ya studenta: ")
-            vik = int(input("Vik studenta: "))
-            spec = input("Specialnist (enter - propustiti): ") or None
-            baza.dodati_studenta(im_ya, vik, spec)
-            print("Studenta dodano!")
+        if choice == '1':
+            name = input("Students name: ")
+            age = int(input("Students age: "))
+            major = input("Major (enter - skip): ") or None
+            base.add_student(name, age, major)
+            print("Student added!")
 
-        elif vibir == '2':
+        elif choice == '2':
             try:
-                print("\nSpisoc studentiv:")
-                baza.cursor.execute("SELECT id, im_ya, vik FROM studenti")
-                studenti = baza.cursor.fetchall()
+                print("\nList of students: ")
+                base.cursor.execute("SELECT id, name, age FROM student")
+                studenti = base.cursor.fetchall()
                 for st in studenti:
-                    print(f"ID: {st[0]}, Im`ya: {st[1]}, Вік: {st[2]}")
+                    print(f"ID: {st[0]}, Name: {st[1]}, Age: {st[2]}")
 
-                print("\nDostupni cursi:")
-                baza.cursor.execute("SELECT id, nazva, vikladach FROM cursi")
-                cursi = baza.cursor.fetchall()
-                for curs in cursi:
-                    print(f"ID: {curs[0]}, Nazva: {curs[1]}, Vikladach: {curs[2]}")
+                print("\nAvailable courses:")
+                base.cursor.execute("SELECT id, name, teacher FROM course")
+                courses = base.cursor.fetchall()
+                for course in courses:
+                    print(f"ID: {course[0]}, Nazva: {course[1]}, Vikladach: {course[2]}")
 
-                id_studenta = int(input("\nVvedit ID studenta: "))
-                id_cursu = int(input("Vvedit ID cursu: "))
+                id_studenta = int(input("\nEnter students ID: "))
+                id_cursu = int(input("Enter course ID: "))
 
-                if baza.zapisatsya_na_curs(id_studenta, id_cursu):
-                    print("Operacia uspishna!")
+                if base.enroll_in_a_course(id_studenta, id_cursu):
+                    print("Operation successful!")
 
                 else:
-                    print("Не vdalosya vikonati zapis")
+                    print("Cannot do entry")
 
             except ValueError:
-                print("Pomilka: nekorektniy format ID")
+                print("Error: incorrect ID format")
             except Exception as e:
-                print(f"Stalasya pomilka: {e}")
+                print(f"Error: {e}")
 
-        elif vibir == '3':
-            id_stud = int(input("ID studenta"))
-            cursi = baza.pokazati_cursi_studenta(id_stud)
-            for curs in cursi:
-                print(f"- {curs[0]} (vikl. {curs[1]})")
+        elif choice == '3':
+            id_stud = int(input("Students ID"))
+            courses = base.show_students_courses(id_stud)
+            for course in courses:
+                print(f"- {course[0]} (age. {course[1]})")
 
-        elif vibir == '4':
-            baza.zednanya.close()
+        elif choice == '4':
+            base.connection.close()
             break
 
 if __name__ == "__main__":
-    print("Zapusk sistemi...")
-    osnovny_cicl()
-    print("Robotu zaversheno")
+    print("Starting system...")
+    main_cycle()
+    print("Ending work")
     print("https://github.com/AyrexSigma/university_db")
